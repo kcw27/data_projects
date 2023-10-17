@@ -1,8 +1,4 @@
-# To make the manual data collection step of my tutoring data project more efficient.
-# This is meant to be used in the command prompt's interactive mode. import mistakes, mistakes.new_mistakes()
-# So you can initialize, re-initialize, and print dictionaries as needed.
-
-# I should implement a function that writes the dictionary to a file so that you can visualize which mistakes were most common using R. (A heat map?)
+# So far there's no function that writes the mistake frequency dictionaries to a file, but they are printed by mistakes_get.py.
 import pandas as pd
 import numpy as np
 import re 
@@ -55,8 +51,8 @@ def new_mistakes(q, d):
 
 def check_all(mistakes_df, d_list):
 	"""
-	Runs new_mistakes() on all mistake lists in mistakes_table, and adds to the corresponding dictionary specified in dict_list.
-	mistakes_df: Column names are dictionaries named in dict_list. Each cell in a column corresponds to one student's mistakes list. Students are ordered according to nonverbal score, best first.
+	Runs new_mistakes() on all mistake lists in mistakes_df, and adds to the corresponding dictionary specified in d_list.
+	mistakes_df: Column names are dictionaries named in dict_list. Each cell in a column corresponds to one student's mistakes list. Students are ordered according to score, best first.
 	d_list: list of mistake dictionaries in which mistake frequencies are tracked. Dictionary names are given as strings.
 	"""
 	rd = {} # results dictionary; the output.
@@ -79,9 +75,11 @@ def check_all(mistakes_df, d_list):
 
 
 
-def mistake_freqs_d(m):
+def mistake_freqs_d(m, alphabetical = True):
 	"""
-	It's kind of a wrapper function for mistake_freqs(), but it does create, sort, and return a new dictionary for mistake_freqs to add to
+	It's kind of a wrapper function for mistake_freqs(), but it does create, sort, and return a new dictionary for mistake_freqs to add to.
+	alphabetical specifies the type of sorting for the dictionary. By default, it's True, so it sorts questions alphabetically.
+	If alphabetical == False, then it sorts questions by frequencies instead.
 	"""
 
 	d = {} # dictionary of mistake frequencies
@@ -90,14 +88,14 @@ def mistake_freqs_d(m):
 	for student in m:
 		mistake_freqs(student, d)
 
-	# should add an optional argument to specify which way you want the dictionary sorted
-	#d = {k: v for k, v in sorted(d.items(), key=lambda item: item[1])} # sorts d by frequencies (which are the values)
-
-	d = {k: d[k] for k in sorted_nicely(d.keys())} # to sort the keys in correct alphanumeric order
+	if alphabetical:
+		d = {k: d[k] for k in sorted_nicely(d.keys())} # to sort the keys in correct alphanumeric order
+	else:
+		d = {k: v for k, v in sorted(d.items(), key=lambda item: item[1], reverse = True)} # sorts d by frequencies (which are the values) in descending order
 
 	return d
 
-def common_mistakes(m, threshold):
+def common_mistakes(m, threshold, alphabetical = True):
 	"""
 	Given a set of students, returns the list of questions which at least threshold-many students made mistakes on.
 
@@ -107,14 +105,17 @@ def common_mistakes(m, threshold):
 	where v_file has the list of mistakes every student made on the verbal test
 
 	threshold is a positive int. If you set threshold == 1, it'll just return the whole list, so it's recommended to use threshold >= 2.
+
+	alphabetical specifies the type of sorting for the dictionary. By default, it's True, so it sorts questions alphabetically.
+	If alphabetical == False, then it sorts questions by frequencies instead.
 	"""
 
-	d = mistake_freqs_d(m)
+	d = mistake_freqs_d(m) # alphabetical parameter left unspecified; by default it's sorted alphabetically
 	common_d = {k: v for k, v in d.items() if v >= threshold} # only keeps questions with mistakes at or above the threshold
 
-	common_d = {k: common_d[k] for k in sorted_nicely(common_d.keys())} # to sort the keys in correct alphanumeric order
+	if alphabetical:
+		common_d = {k: common_d[k] for k in sorted_nicely(common_d.keys())} # to sort the keys in correct alphanumeric order
+	else:
+		common_d = {k: v for k, v in sorted(common_d.items(), key=lambda item: item[1], reverse = True)} # sorts d by frequencies (which are the values) in descending order
 
 	return common_d
-
-# also consider a function to undo a new_mistakes() call (i.e. revert changes made by that call) in case you accidentally reenter it and it messes up the frequencies
-# nah actually that's no longer needed because I made the mistakes_get.check_all() function so I can just put all the data in a .tsv file
