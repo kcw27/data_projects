@@ -12,7 +12,8 @@ The data analyzed in this project were collected from first grade classes that t
 Ideally, we'd be able to review every single problem that each student made mistakes on. However, in reality, class time is limited. Tutors are assigned a group of students to review with, and they must pace their explanations such that they best serve the needs of the group within the time allotted.
 <ul>mistakes.py: the mistakes module contains several functions that construct and work with dictionaries of mistake frequencies. </ul>
 <ul>class_oct12.py: a script that demonstrates how to use functions in the mistakes module to get an optimized list of questions to review, complete with mistake frequencies.</ul>
-<ul><b>TO DO: create a user manual explaining the format in which to collect data from one's group of students, and how to modify class_oct12.py (or a generic fill-in-the-blank version of it) for use with that data. This user manual should be accessible even to people who have never used Python or the command prompt.</b></ul>
+<ul>find_common.py: a generic fill-in-the-blank version of class_oct12.py.</ul>
+<ul><b>TO DO: create a user manual explaining the format in which to collect data from one's group of students. This user manual should be accessible even to people who have never used Python or the command prompt.</b></ul>
 
 Another issue we face is that the student-to-tutor ratio is often higher than we'd like it to be. If a tutor cancels on short notice, this ratio becomes even higher. I'd like to predict how the pool of unique mistakes among a group of students increases as students are added to the group.  
 <ul>mistakes.py: as explained above.</ul>
