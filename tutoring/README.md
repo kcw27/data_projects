@@ -1,9 +1,9 @@
 # Motivation
-I currently work as a tutor at a test prep service. We teach test-taking skills to students in grades 1-8. I collected data on how students performed on our practice tests so that I could explore some patterns that I observed. These findings will inform us of ways to increase the efficiency of our workflow. I also developed some time-saving tools that quickly identify the test problems that students need additional help with. These tools will allow tutors to optimize how they allocate time toward explaining tricky problems and concepts.
+I currently work as a tutor at a test prep service. I collected data on how students performed on our practice tests so that I could explore some patterns that I observed. These findings will inform us of ways to increase the efficiency of our workflow. I also developed some time-saving tools that quickly identify the test problems that students need additional help with. These tools will allow tutors to optimize how they allocate time toward explaining tricky problems and concepts.
 
 # Contents
 ## Data
-The data analyzed in this project were collected from first grade classes. Two classes are featured: a Saturday morning class and a Sunday morning class. The majority of students are from the same school district. All data are anonymized.
+The data analyzed in this project were collected from first grade classes. Two classes are featured: a Saturday class and a Sunday class. The majority of students are from the same school district. All data are anonymized.
 <ul>Files titled in the format "weekX_day.txt" are raw data. They contain lists of mistakes that the twelve best-performing students made on each test. Each row corresponds to a student.</ul>
 <ul>class_oct12.txt is the data used with class_oct12.py. Each row in this tab-separated file contains a single student's test scores. Order of students is arbitrary. This file only includes students that were in my review group.</ul>
 <ul>In the subdirectory /output, files titled in the format "checked_Xday.csv" were processed using the mistakes module.</ul>
