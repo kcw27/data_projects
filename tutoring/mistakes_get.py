@@ -1,5 +1,3 @@
-# data collection for tutoring data project, from week 5 Sunday onward (when I realized that I could cut down on some of the tedium)
-
 import mistakes
 import pandas as pd
 import numpy as np
@@ -70,7 +68,7 @@ checked_5sat = mistakes.check_all(week5_sat, d_5sat)
 #checked_3sun["results"].to_csv("data\output\checked_3sun.csv")
 #checked_4sat["results"].to_csv("data\output\checked_4sat.csv")
 #checked_4sun["results"].to_csv("data\output\checked_4sun.csv")
-checked_5sat["results"].to_csv("data\output\checked_5sat.csv")
+#checked_5sat["results"].to_csv("data\output\checked_5sat.csv")
 #checked_5sun["results"].to_csv("data\output\checked_5sun.csv")
 #checked_6sat["results"].to_csv("data\output\checked_6sat.csv")
 #checked_6sun["results"].to_csv("data\output\checked_6sun.csv")
