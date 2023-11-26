@@ -1,3 +1,5 @@
+NOTE: I hope to upload a draft of my data visualization + analysis (i.e. tutoring.Rmd) in early December, as I am currently busy with submitting graduate school applications. Please check back later for that. It's in progress, but it's too messy to share at the moment.
+
 # Motivation
 I currently work as a tutor at a test prep service. I collected data on how students performed on our practice tests so that I could explore some patterns that I observed. These findings will inform us of ways to increase the efficiency of our workflow. I also developed some time-saving tools that quickly identify the test problems that students need additional help with. These tools will allow tutors to optimize how they allocate time toward explaining tricky problems and concepts.
 
