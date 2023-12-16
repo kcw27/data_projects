@@ -1,0 +1,526 @@
+---
+title: "Tutoring data project, part 1"
+author: "Katie Wang"
+date: "`r Sys.Date()`"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(stringr)
+library(infer)
+theme_set(theme_classic())
+```
+
+## Overview:
+At my tutoring job, each tutor is assigned a group of students to review test mistakes with. Students are grouped by how well they performed on the tests, and we aim to review all mistakes within our group. The more students there are in a group, the more mistakes there are to review, and the time available for explaining each question decreases accordingly. I would like to model the increase in number of unique mistakes per student added to a group. The findings could be used to optimize the number of tutors working on any given day, i.e. for a class of this size, at what point is it overkill to ask another tutor to teach?  
+
+Part 1 of my project is meant to answer the question of "How many additional mistakes should I expect to review if I add another student to my group?" It features ordered data, which was collected from the 12 best students from each class, as the order of test scores matters for this analysis.  
+(Part 2 will feature data from 12 randomly-sampled students from each class. In part 2, I'll investigate whether grouping students by test score is the best approach.)
+
+## Importing data:
+Data collected from the website of the test prep center where the author works as a tutor. The .csv files imported below were first processed in Python using the author's mistakes module and mistakes_get.py. Only data from week 3 onward is included.
+
+.csv files containing lists of additional mistakes, by day
+processed by running mistakes_get.py, which uses functions in the module mistakes.py.
+
+The data imported in this chunk will be used to answer questions regarding how many additional mistakes are to be expected if additional students are added to the group.
+```{r, message=FALSE}
+checked_3sat <- read_csv("data/output/checked_3sat.csv", show_col_types = FALSE)
+checked_3sun <- read_csv("data/output/checked_3sun.csv", show_col_types = FALSE)
+
+checked_4sat <- read_csv("data/output/checked_4sat.csv", show_col_types = FALSE)
+checked_4sun <- read_csv("data/output/checked_4sun.csv", show_col_types = FALSE)
+
+checked_5sat <- read_csv("data/output/checked_5sat.csv", show_col_types = FALSE)
+checked_5sun <- read_csv("data/output/checked_5sun.csv", show_col_types = FALSE)
+
+checked_6sat <- read_csv("data/output/checked_6sat.csv", show_col_types = FALSE)
+checked_6sun <- read_csv("data/output/checked_6sun.csv", show_col_types = FALSE)
+
+checked_7sat <- read_csv("data/output/checked_7sat.csv", show_col_types = FALSE)
+checked_7sun <- read_csv("data/output/checked_7sun.csv", show_col_types = FALSE)
+
+# for week 8, student_mistakes (column 4) was falsely interpreted as numeric 
+# because no question IDs had letters in them
+checked_8sat <- read_csv("data/output/checked_8sat.csv", show_col_types = FALSE,
+                         col_types = "ncncnnc")
+checked_8sun <- read_csv("data/output/checked_8sun.csv", show_col_types = FALSE,
+                         col_types = "ncncnnc")
+
+checked_9sat <- read_csv("data/output/checked_9sat.csv", show_col_types = FALSE)
+checked_9sun <- read_csv("data/output/checked_9sun.csv", show_col_types = FALSE)
+
+checked_10sat <- read_csv("data/output/checked_10sat.csv", show_col_types = FALSE)
+checked_10sun <- read_csv("data/output/checked_10sun.csv", show_col_types = FALSE)
+
+checked_11sat <- read_csv("data/output/checked_11sat.csv", show_col_types = FALSE)
+checked_11sun <- read_csv("data/output/checked_11sun.csv", show_col_types = FALSE)
+```
+
+## Glossary
+Test subjects: abbreviated as v, n, q, e (similar to v), and m (similar to q).  
+IC: in-class test.  
+HW: homework test.  
+
+Performance metric: In weeks 3-6, the n test is used as a performance metric, meaning that students who made fewer mistakes on the n tests are considered better-performing. In weeks 7-11, the sum of mistakes from e and m HW (otherwise referred to as just e+m) is used as the performance metric. 
+
+Unique mistakes vs overlap: We try to review all mistakes made by all students in our groups. Imagine that as we build the group of students, we add the students one at a time, in ascending order of number of test mistakes made. (Students are indexed n=1 to n=12 in this markdown. n=1 is the student who is added to the group first, i.e. the student with the fewest mistakes on the test used as a performance metric for that week.) When we add a student to our group, that student's test mistakes either _overlap_ with mistakes that other students in the group have made, or these mistakes are _unique_ to that student so far. Then, when we add another student, that new student's test mistakes are checked against the pool of mistakes, which includes what was considered to be the previous student's unique mistakes.  
+
+Accumulated mistakes: the number of mistakes we need to review in order to cover all mistakes made within the group.
+
+spq (discussed in part 2): seconds per question, i.e. how much time tutors can afford to take per question. When the tutors review test mistakes with their group of students, they must strike a balance between breadth and depth. If the students in the group have made a lot of mistakes, it's very difficult for tutors to explain each mistake in sufficient depth. This forces them to make a choice: do they explain every single mistake made in their group, or do they skip a few mistakes so that they can provide better explanations for the mistakes that they do review?  
+
+Anecdotal tier list of spq:  
+* <30 spq: unacceptably rushed.  
+* 30-40 spq: somewhat rushed explanations.  
+* 40-60 spq: decent quality explanations.  
+* 60-90 spq: in-depth explanations. Depending on the test content, even 70+ spq may be excessive.  
+* >90 spq: excessive spq; will likely finish very early. Could possibly improve overall efficiency by more evenly distributing performance levels across groups, as in the parity approach. (Grouping approaches are discussed in part 2.)
+
+## Preliminary data wrangling
+### Wrangling output data
+Combining all the output data into one big dataframe, all_output:
+```{r}
+output_list <- list(checked_3sat, checked_3sun, checked_4sat, checked_4sun, 
+                   checked_5sat, checked_5sun, checked_6sat, checked_6sun,
+                   checked_7sat, checked_7sun, checked_8sat, checked_8sun,
+                   checked_9sat, checked_9sun, checked_10sat, checked_10sun,
+                   checked_11sat, checked_11sun)
+
+all_output <- bind_rows(output_list) # they all have the same columns, so combine them this way
+
+all_output <- all_output |>
+  mutate(student_mistakes_num = lengths(strsplit(all_output$student_mistakes, ","))) |> 
+  # number of mistakes made by the individual; total_mistakes = number of unique mistakes in the whole group at this point
+  # it's important to use lengths(), not length(), otherwise you'll get the length of the entire column
+  relocate(student_mistakes_num, .after = student_mistakes) 
+
+all_output <- all_output |>
+  mutate(day = sub(".*_", "", test)) |> # to make it possible to sort by day
+  mutate(week = as.numeric(substr(day, 1, nchar(day)-3))) |> # to make it possible to sort by week
+  mutate(weekday = substr(day, nchar(day)-2, nchar(day))) |>
+  mutate(day = factor(day, levels = c("3sat", "3sun", "4sat", "4sun", "5sat", "5sun", "6sat", "6sun",
+                      "7sat", "7sun", "8sat", "8sun", "9sat", "9sun", "10sat", "10sun", 
+                      "11sat", "11sun"))) |> # after getting week and weekday, can convert day to factor for correct ordering
+  mutate(subject = sub("_.*", "", test)) |>
+  # starting from week 7, there are both English and math subjects for IC and HW tests
+  # prior to week 7, e and m were only HW tests, so I'll group the HW tests from week 7 with the other e and m tests
+  mutate(subject = ifelse(subject == "mhw", "m", subject)) |>
+  mutate(subject = ifelse(subject == "ehw", "e", subject)) |>
+  relocate(day, subject, week, weekday, .before = test)
+```
+
+Here's a version of all_output where it doesn't separate by test. Instead, it provides a summary for each day (class session).
+```{r, message=FALSE}
+all_output_by_day <- all_output |>
+  group_by(day, week, weekday, group_size) |>
+  summarize(student_mistakes_num = sum(student_mistakes_num),
+            total_mistakes = sum(total_mistakes),
+            add_mistakes = sum(add_mistakes))
+```
+
+
+# Exploratory visualization and interpretation
+## Mistakes per individual student
+First, for each day and each test, let's visualize the number of mistakes made by each student added to the group. 
+
+The first plot shows how many mistakes were made in total by each student for each day. It's not always a smooth increase from n=1 to n=12; in fact, in 3sat, the 8th student just so happened to do much better on the v and q tests than on the n test, while the 7th student did much better on the n test than on the v and q tests.
+
+```{r, fig.width=10, fig.asp=0.5}
+all_output_by_day |>
+  ggplot(aes(x=group_size, y=student_mistakes_num)) +
+  geom_point() +
+  facet_wrap(~day, ncol=6) +
+  xlab("nth student added to group") +
+  ylab("Total mistakes made by nth student") +
+  scale_x_continuous(breaks=seq(12))
+```
+
+
+Very loosely speaking, based on the second plot, it appears as though the variance in individual student scores between test subjects has decreased, and fewer mistakes are being made. The test subjects in weeks 3-5 differ from those used in week 6, as well as from week 7 onward, so exercise caution when comparing between these time periods.
+```{r, fig.width=10, fig.asp=2, message=FALSE}
+all_output |>
+  ggplot(aes(x=group_size, y=student_mistakes_num)) +
+  geom_point(aes(color = subject)) +
+  # the two geom_line() calls below show which scores were used to group the students:
+  # n for weeks 3-6
+  geom_line(data = all_output |> filter(subject == "n"), aes(color = subject)) + 
+  # sum of e and m HW for week 7
+  geom_line(data = subset(all_output, 
+                          day %in% c("7sat", "7sun", "8sat", "8sun", "9sat", 
+                                     "9sun", "10sat", "10sun", "11sat", "11sun") & 
+                            subject %in% c("e", "m")) |> 
+              group_by(day, group_size) |> 
+              summarize(em_student_mistakes = sum(student_mistakes_num)),
+            aes(y=em_student_mistakes)) +
+  facet_wrap(~day, ncol=2) +
+  xlab("nth student added to group") +
+  ylab("Mistakes made by nth student") +
+  scale_x_continuous(breaks=seq(12))
+```
+It seems like I made a mistake in ordering the students in 11sun, based on the dip in the geom_line at student 9.  
+
+
+The box plots suggest that within the group of 12 students selected for the group on each day, there's considerable variation in how students perform on each test.
+In weeks 7 and 8, the means on the box plots seem to suggest that for both subjects, students performed better on the IC tests than on the corresponding HW tests. In week 9 (and to a lesser extent, week 10), students performed better on the e IC test than on the e HW, but the pattern did not extend to the week's m tests. In week 11, the m IC test seemed to be easier than the rest.  
+There isn't a consistent pattern of IC tests being easier than HW tests. The difficulty of the tests seem to vary.
+```{r, fig.width=10, fig.asp=2}
+all_output |>
+  ggplot(aes(x=subject, y=student_mistakes_num)) +
+  geom_boxplot() +
+  facet_wrap(~day, ncol=2, scales = "free_x") + # consistent y axes
+  xlab("Subject") +
+  ylab("Mistakes made by each student")
+
+all_output |>
+  ggplot(aes(x=subject, y=student_mistakes_num)) +
+  geom_boxplot() +
+  facet_wrap(~day, ncol=2, scales = "free") + # y axes are scaled to better show the box plots
+  xlab("Subject") +
+  ylab("Mistakes made by each student")
+```
+
+
+Does the mean number of mistakes per student decrease over time? (without separating by subject)
+```{r, message=FALSE}
+all_output_by_day |>
+  group_by(week, day, weekday) |>
+  summarize(mean_mistakes = mean(student_mistakes_num)) |>
+  ggplot(aes(x=week, y=mean_mistakes)) +
+  # colors to indicate which weeks featured the same test subjects
+  geom_rect(aes(xmin=-Inf, xmax=5.5, ymin=-Inf, ymax=Inf), 
+            fill="lightgoldenrodyellow") +
+  geom_rect(aes(xmin=5.5, xmax=6.5, ymin=-Inf, ymax=Inf), 
+            fill="thistle1") +
+  geom_rect(aes(xmin=6.5, xmax=Inf, ymin=-Inf, ymax=Inf), 
+            fill="slategray1") +
+  geom_point(aes(color = weekday)) +
+  geom_line(aes(color = weekday)) +
+  labs(x="Week", y="Mean mistakes per student", title="Mistakes per student") +
+  scale_x_continuous(breaks = seq(9)+2) +
+  scale_y_continuous(breaks = seq(7)*10-10, limits = c(0,65))
+```
+  
+The mean number of mistakes showed a downward trend within weeks 3-5, followed by a spike at week 6 (which must have featured harder tests). It is hard to say whether there's a downward trend in mistakes from week 7 onward. Considering that the tests vary in difficulty from week to week, it is difficult to quantify the progress of the group as a whole, even within each of the three zones I've colored in above. The progress of individual students would be better demonstrated using percentiles.
+
+Here's a similar plot, but split by test subject.
+```{r, fig.width=10, fig.asp=0.25, message=FALSE}
+all_output |>
+  group_by(week, day, weekday, subject) |>
+  summarize(mean_mistakes = mean(student_mistakes_num)) |>
+  ggplot(aes(x=week, y=mean_mistakes)) +
+  # colors to indicate which weeks featured the same test subjects
+  geom_rect(aes(xmin=-Inf, xmax=5.5, ymin=-Inf, ymax=Inf), 
+            fill="lightgoldenrodyellow") +
+  geom_rect(aes(xmin=5.5, xmax=6.5, ymin=-Inf, ymax=Inf), 
+            fill="thistle1") +
+  geom_rect(aes(xmin=6.5, xmax=Inf, ymin=-Inf, ymax=Inf), 
+            fill="slategray1") +
+  geom_point(aes(color = subject)) +
+  geom_line(aes(color = subject)) +
+  facet_wrap(~weekday) +
+  labs(x="Week", y="Mean mistakes per student", title="Mistakes per student (split by test)") +
+  scale_x_continuous(breaks = seq(9)+2) +
+  scale_y_continuous(breaks = seq(7)*5-5, limits = c(0,20))
+```
+Interestingly, while the Saturday class shows a significant jump in both n and q mistakes from week 5 to week 6, the Sunday class does not. The v tests (weeks 3-5) seemed to be about the same between the two classes, but aside from week 5, the Saturday class made far more mistakes on n and q tests. In week 8, which seemed to feature difficult HW tests (i.e. e and m), the jump in mistakes was much more pronounced for the Saturday class.  
+
+
+For each test subject (v, n, q, e, m), does the variability in number of mistakes made by each student decrease over time? I've plotted standard deviation (square root of variance) and IQR (which is more robust to outliers) below.
+```{r, fig.width=10, fig.asp=0.25, message=FALSE}
+all_output |>
+  group_by(week, day, weekday, subject) |>
+  summarize(sd_mistakes = sd(student_mistakes_num)) |>
+  ggplot(aes(x=week, y=sd_mistakes)) +
+  # colors to indicate which weeks featured the same test subjects
+  geom_rect(aes(xmin=-Inf, xmax=5.5, ymin=-Inf, ymax=Inf), 
+            fill="lightgoldenrodyellow") +
+  geom_rect(aes(xmin=5.5, xmax=6.5, ymin=-Inf, ymax=Inf), 
+            fill="thistle1") +
+  geom_rect(aes(xmin=6.5, xmax=Inf, ymin=-Inf, ymax=Inf), 
+            fill="slategray1") +
+  geom_point(aes(color = subject)) +
+  geom_line(aes(color = subject)) +
+  facet_wrap(~weekday) +
+  labs(x="Week", y="Standard deviation in mistakes per student") +
+  scale_x_continuous(breaks = seq(9)+2) +
+  scale_y_continuous(breaks = seq(7)*5-5, limits = c(0,20))
+
+all_output |>
+  group_by(week, day, weekday, subject) |>
+  summarize(iqr_mistakes = IQR(student_mistakes_num)) |>
+  ggplot(aes(x=week, y=iqr_mistakes)) +
+  # colors to indicate which weeks featured the same test subjects
+  geom_rect(aes(xmin=-Inf, xmax=5.5, ymin=-Inf, ymax=Inf), 
+            fill="lightgoldenrodyellow") +
+  geom_rect(aes(xmin=5.5, xmax=6.5, ymin=-Inf, ymax=Inf), 
+            fill="thistle1") +
+  geom_rect(aes(xmin=6.5, xmax=Inf, ymin=-Inf, ymax=Inf), 
+            fill="slategray1") +
+  geom_point(aes(color = subject)) +
+  geom_line(aes(color = subject)) +
+  facet_wrap(~weekday) +
+  labs(x="Week", y="IQR of mistakes per student") +
+  scale_x_continuous(breaks = seq(9)+2) +
+  scale_y_continuous(breaks = seq(7)*5-5, limits = c(0,20))
+```
+
+The shapes of the standard deviation and IQR plots are remarkably similar to each other, and to the plot of mistakes per student (split by test). This indicates that the harder the test is, the higher the variability is. So even though there's no clear trend of variability in number of mistakes among the students decreasing over time, there is an apparent correlation between difficulty of test and variability in student scores.
+
+## Unique mistakes per group
+Now I will visualize the number of *accumulated* mistakes for each test.
+```{r, fig.height=4, fig.width=3, message=FALSE}
+all_output_by_day |>
+  ggplot(aes(x=group_size, y=total_mistakes)) +
+  geom_point() +
+  geom_smooth(method="lm", linewidth=0.75) +
+  facet_wrap(~day, ncol=2) +
+  xlab("nth student added to group") +
+  ylab("Number of unique mistakes within the group") +
+  scale_x_continuous(breaks=seq(12))
+
+all_output |>
+  ggplot(aes(x=group_size, y=total_mistakes, color = subject)) +
+  geom_point() +
+  geom_smooth(method="lm", se=FALSE, linewidth=0.75) +
+  facet_wrap(~day, ncol=2) +
+  xlab("nth student added to group") +
+  ylab("Number of unique mistakes within the group") +
+  scale_x_continuous(breaks=seq(12))
+```
+
+I also fit quadratic curves to the points, since I suspected that the number of unique mistakes would asymptote as group size increases.
+```{r}
+all_output |>
+  ggplot(aes(x=group_size, y=total_mistakes, color = subject)) +
+  geom_point() +
+  geom_smooth(method="lm", formula = y~poly(x, 2), se=FALSE, linewidth=0.75) +
+  facet_wrap(~day, ncol=2) +
+  xlab("nth student added to group") +
+  ylab("Number of unique mistakes within the group") +
+  scale_x_continuous(breaks=seq(12))
+```
+  
+Based on the plot with all the test scores combined, there seems to be a fairly linear increase in unique mistakes as students are added to the group. The exception is 3sat, which appears to follow a more asymptotic exponential growth curve. It's a little bit surprising that the total _additional_ mistakes show such a linear increase as students are added. Of course, students are added in order of score on a particular test (or the sum of two tests in the case of week 7 onward), so we expect to see a more or less linear increase in the number of individual student mistakes on that particular test. However, this pattern appears to carry over to the total _additional_ mistakes, which depend on the number of _unique_ mistakes added by the student. This suggests that mistakes are spread out such that each additional student contributes about the same number of unique mistakes, i.e. the proportion of non-overlap between an individual student's mistakes and the pool of previous mistakes is roughly constant if students are added in order of their score on a single test.  
+I hypothesize that even though this pattern appears to be linear locally, the globally exponential shape of the curve is more apparent when many unique mistakes are made earlier in the group, therefore leaving fewer possible unique mistakes for the later members. This is what I believe occurred in 3sat.   
+
+When the mistakes are separated by test, most tests are described fairly well by their regression lines. However, for some tests (e.g. the week 3 q test and the week 4 q test), the behavior is more asymptotic. This behavior can be explained using the individual student mistake plots from earlier, which show that in weeks 3 and 4, a few students who were considered "middle of the pack" in their n test rankings scored poorly on the q test relative to their peers.  
+
+### Assessing the fit of regression lines
+I'll look at R-squared values. I am curious about how well these regression lines/curves fit the data they were based on, so I'll also check the normality of the residuals.  
+
+The analysis below features tests from week 4.
+
+First, let's test some data that I expect to see a linear relationship in. In week 4, I used n tests to order the students. This means that these data points aren't really independent.
+```{r}
+n_4sat_lm <- all_output |>
+  filter(test == "n_4sat") |>
+  lm(formula = total_mistakes ~ group_size)
+
+summary(n_4sat_lm) 
+# Multiple R-squared is 0.9912, which is really high; very close to 1 (on a scale from 0 to 1)
+
+n_4sat_resid <- n_4sat_lm |>
+  residuals()
+
+qqnorm(n_4sat_resid)
+qqline(n_4sat_resid) 
+# the data doesn't look very normal; deviance from the line is especially egregious on the left tail
+```
+The high R-squared value isn't surprising, nor is the non-normal distribution.  
+
+Now for independent data that I observed a linear relationship in. Granted, this data can't be considered entirely independent because the order was based on n scores, and students who are better at test-taking in general will probably score better on all tests. But we will suppose, as a null hypothesis, that performance on n tests has no correlation to performance on v tests.  
+```{r}
+v_4sat_lm <- all_output |>
+  filter(test == "v_4sat") |>
+  lm(formula = total_mistakes ~ group_size)
+
+summary(v_4sat_lm) # Multiple R-squared is 0.9106, which is also very high
+
+v_4sat_resid <- v_4sat_lm |>
+  residuals()
+
+qqnorm(v_4sat_resid)
+qqline(v_4sat_resid)
+# this data looks much more normal, presumably because it's independent
+```
+We still observe a very linear relationship between v scores, so we can reject that null hypothesis.
+
+Now I'll test some data that is less well-explained by a line: would a curve explain it better?
+```{r}
+q_4sat_line_lm <- all_output |>
+  filter(test == "q_4sat") |>
+  lm(formula = total_mistakes ~ group_size)
+
+q_4sat_quad_lm <- all_output |>
+  filter(test == "q_4sat") |>
+  lm(formula = total_mistakes~poly(group_size, 2))
+
+summary(q_4sat_line_lm) # Multiple R-squared for linear relationship: 0.9411
+summary(q_4sat_quad_lm) # Multiple R-squared for quadratic relationship: 0.9583
+
+q_4sat_line_resid <- q_4sat_line_lm |>
+  residuals()
+
+qqnorm(q_4sat_line_resid)
+qqline(q_4sat_line_resid)
+# data points along the tails don't follow the straight line, but this is fine
+
+q_4sat_quad_resid <- q_4sat_quad_lm |>
+  residuals()
+
+qqnorm(q_4sat_quad_resid)
+qqline(q_4sat_quad_resid)
+# looks pretty normal
+```
+I claimed that this was "less well-explained by a line", but even so, the R-squared value corresponding to the linear model was very high, at 0.9411. The R-squared value corresponding to the quadratic model, which was 0.9583, is slightly higher.   
+
+All of the multiple R-squared values have been exceptionally high. I suspect this is due to my method of data collection. As previously explained, none of these points are really independent. Even though the total unique mistakes added per student can vary depending on how much overlap there is between their answers and previous mistakes, the total unique mistakes are cumulative.  
+
+Although I have collected randomized data, I am fitting lines to the ordered data because we do sort students into groups by ranking their performance. Students with similar performance are put together. If I had used randomized data, the data may be more independent, but these students wouldn't have necessarily ended up in the same group in real life.  
+
+Though it's not independent, the data still leads to an interesting conclusion. The high R-squared values for the linear models _are_ meaningful. They indicate that the asymptote behavior isn't reached with a group size of 12 or less... and a group of 12 is pretty big! At the very least, if you're making a group of the best-performing students, rather than of the mid-ranked or low-ranked students, the asymptote behavior doesn't occur. This means that adding students to a group (or at least, to the best-performing group) _will_ linearly increase the number of _accumulated_ mistakes to review. Personally, I would have hoped for the asymptote behavior to be reached quickly. These results indicate that if one tutor fails to show up and the group sizes for the remaining tutors increase accordingly, the number of mistakes that each tutor has to review will significantly increase. I will reiterate that these results were demonstrated for the best-performing group, and shouldn't be extrapolated to the other groups. It's possible that the other groups will reach asymptote behavior sooner. In that case, adding more students to worse-performing groups could possibly minimize the overall burden of additional mistakes to review.
+
+### Modeling the number of additional mistakes per student
+The main motivation for starting this project was to predict how many additional mistakes I needed to review for every student added to my group. For example, if a tutor cancels at the last minute, that increases the student to tutor ratio, which means larger group sizes and thus more mistakes to review. As you can see above, I fit a bunch of lines to the unique mistake counts for each class session. I'd like to know if the slopes of these lines are similar enough that I can average them for a time-independent model of how many additional mistakes I can expect given a certain group size and a y-intercept (or a current mistake count).
+
+The tests are the same for all classes in a given week, so instead of treating Saturdays and Sundays as independent of each other, I'll average the Saturday and Sunday slopes for each week.  
+
+For weeks 3-6, n is used as the performance metric, while for weeks 7-11, e+m is used as the performance metric. I'll separate the analyses accordingly.  
+
+#### For weeks 3-6:
+To get the linear regression slopes, I'll manually copy the slopes from the Estimate column of the lm summaries. In an lm summary, the intercept is always called (Intercept), while the slope has the name of the independent variable (group_size in this case).
+```{r}
+lm_3sat <- all_output |> filter(day == "3sat") |> lm(formula = total_mistakes ~ group_size)
+summary(lm_3sat)
+#confint(lm_3sat, level=0.95)
+
+lm_3sun <- all_output |> filter(day == "3sun") |> lm(formula = total_mistakes ~ group_size)
+summary(lm_3sun)
+
+lm_4sat <- all_output |> filter(day == "4sat") |> lm(formula = total_mistakes ~ group_size)
+summary(lm_4sat)
+
+lm_4sun <- all_output |> filter(day == "4sun") |> lm(formula = total_mistakes ~ group_size)
+summary(lm_4sun)
+
+lm_5sat <- all_output |> filter(day == "5sat") |> lm(formula = total_mistakes ~ group_size)
+summary(lm_5sat)
+
+lm_5sun <- all_output |> filter(day == "5sun") |> lm(formula = total_mistakes ~ group_size)
+summary(lm_5sun)
+
+lm_6sat <- all_output |> filter(day == "6sat") |> lm(formula = total_mistakes ~ group_size)
+summary(lm_6sat)
+
+lm_6sun <- all_output |> filter(day == "6sun") |> lm(formula = total_mistakes ~ group_size)
+summary(lm_6sun)
+```
+
+First, here are the lm slopes plotted as a function of time.
+```{r}
+lm_slopes <- data.frame(week = c(3, 4, 5, 6),
+  sat_slopes = c(3.9254, 3.39161, 2.3205, 2.6154),
+  sun_slopes = c(2.3065, 2.5606, 1.9802, 2.1128))
+
+lm_longer <- lm_slopes |>
+  pivot_longer(c(sat_slopes, sun_slopes),
+               names_to = "day", values_to = "slope")
+
+lm_longer |>
+  ggplot(aes(x=week, y=slope)) +
+  geom_rect(aes(xmin=-Inf, xmax=5.5, ymin=-Inf, ymax=Inf), 
+            fill="lightgoldenrodyellow") +
+  geom_rect(aes(xmin=5.5, xmax=6.5, ymin=-Inf, ymax=Inf), 
+            fill="thistle1") +
+  geom_point(aes(color=day)) +
+  geom_line(aes(color=day))
+```
+
+Based on this plot, variance in slopes seems pretty large. Slopes do seem to follow the previously-observed pattern in test difficulty. The harder the test, the steeper the slope. The shape of the plot is remarkably similar to the plot of mean number of mistakes per student.
+
+
+Now I'll calculate the means of the Saturday and Sunday slopes for each week, as well as the means of the Saturday and Sunday intercepts. I'll also make a box plot of the slopes, though it has only 4 points to work with.
+```{r, message=FALSE}
+lm_slopes <- lm_slopes |>
+  group_by(week,sat_slopes,sun_slopes) |>
+  summarize(mean_slope=mean(c(sat_slopes, sun_slopes))) # need to use summarize so it vectorizes mean
+
+lm_intercepts <- data.frame(week = c(3, 4, 5, 6),
+  sat_intercepts = c(2.9848, 0.06566, -0.6111, 2.0833),
+  sun_intercepts = c(6.7576 , 3.3283, 1.5455, 2.3712))
+
+lm_intercepts <- lm_intercepts |>
+  group_by(week, sat_intercepts, sun_intercepts) |>
+  summarize(mean_intercept=mean(c(sat_intercepts, sun_intercepts)))
+
+lm_week3to6 <- left_join(lm_slopes, lm_intercepts, by="week")
+
+lm_week3to6
+
+lm_week3to6 |>
+  ggplot(aes(y=mean_slope)) +
+  geom_boxplot() +
+  geom_hline(yintercept=mean(lm_week3to6$mean_slope), color="red") + # mean of these lines
+  labs(y="Mean of Saturday and Sunday slopes") +
+  guides(x="none") # removes x axis
+
+mean(lm_week3to6$mean_slope) # reported as 2.651626
+```
+The variance in lm slopes between weeks seems to be pretty large, but on average, using a slope of 2.65 would predict the _additional_ mistakes to need to review. For example, if you're adding the 8th student, add 21.2 questions to your total mistake list. (This doesn't take the intercept into account ) It's nice because you don't even need to know how many mistakes that student made or which questions they are, you can very quickly get a prediction of how many unique mistakes they bring to the table.
+However, the slopes differ between tests, as test difficulty differs between weeks, and slope is correlated with test difficulty. So instead of attempting a time-independent prediction, you should use the slope corresponding to the week, as shown on the geom_point plot. 
+
+To predict the number of additional mistakes expected per student for any week (assuming it's the best-performing group and the group size is 12 or less), you could plot a line using mean_slope and mean_intercept for that week. Or for this year's Saturday or Sunday class, you could use the slope and intercept specific to that class and week. Do keep in mind, that the Saturday and Sunday classes performed differently, and that future classes will probably also perform differently. These means are of two data points (this year's Saturday and Sunday classes), so any estimates made using them will be very rough.
+
+#### For weeks 7-11:  
+TO DO: do the same analysis as above.
+```{r}
+lm_7sat <- all_output |> filter(day == "7sat") |> lm(formula = total_mistakes ~ group_size)
+summary(lm_7sat)
+
+lm_7sun <- all_output |> filter(day == "7sun") |> lm(formula = total_mistakes ~ group_size)
+summary(lm_7sun)
+```
+
+
+
+TO DO: difference in paired means (paired by week): slope of regression lines for unique mistakes (stored in lm_slopes and lm_longer) compared to slopes of regression lines for individual student mistakes on the n test (only done for weeks 3-6). I have a hunch that the former relies on the latter, or at least is proportional to it, because the n test was used to order the students. (To check if they're proportional, I could plot them as geom_point with x=week and y=slope, facet_grid by day, and see if the unique mistake slopes echo the individual student n mistake slopes). Could also do this with the additional unique n mistake slopes (as opposed to the slopes for individual student total n mistakes).
+If it turns out that the unique mistakes slopes do depend on the n mistakes somehow, then the n test is a fairly good measure of a student's overall performance. That would vindicate our usage of the n test as a performance metric.
+```{r}
+
+```
+
+
+TO DO:
+
+```{r}
+all_output |>
+  ggplot(aes(x=subject, y=total_mistakes)) +
+  geom_boxplot() +
+  ylab("Number of unique mistakes within the group")
+```
+
+# TO DO (for part 1):
+All items noted above, as well as some additional topics.
+
+Calculate spq for each group size. rate_spq: method to calculate spq.
+```{r}
+# finding spq: divide review_time by the number of mistakes to review
+review_time <- 60 * 90 # in seconds; assume you have 90 minutes to review all tests in a class session
+
+# use ifelse for vectorized if statements
+rate_spq <- function(spq) {
+  ifelse(spq < 30, "rushed",
+         ifelse(spq <= 40, "adequate",
+                ifelse(spq <= 60, "good",
+                       ifelse(spq <= 90, "excellent", "excessive"))))
+}
+```
+
+Saturday vs Sunday performance comparison  
+
+To analyze whether n tests are a good metric for overall performance, import the input data and use that for the analysis.
