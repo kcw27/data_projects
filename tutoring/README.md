@@ -1,4 +1,4 @@
-NOTE: I hope to upload a draft of my data visualization + analysis (i.e. tutoring.Rmd) in early December, as I am currently busy with submitting graduate school applications. Please check back later for that. It's in progress, but it's too messy to share at the moment.
+NOTE: The R Markdown and knitted HTML file for my data visualization + analysis are up! See tutoring_part1.Rmd and tutoring_part1.html. I will continue working on this project in January. Happy holidays!
 
 # Motivation
 I currently work as a tutor at a test prep service. I collected data on how students performed on our practice tests so that I could explore some patterns that I observed. These findings will inform us of ways to increase the efficiency of our workflow. I also developed some time-saving tools that quickly identify the test problems that students need additional help with. These tools will allow tutors to optimize how they allocate time toward explaining tricky problems and concepts.
@@ -21,5 +21,6 @@ Another issue we face is that the student-to-tutor ratio is often higher than we
 <ul>mistakes.py: as explained above.</ul>
 <ul>mistakes_get.py: uses the mistakes module to produce output data. The output data tracks, for each group size (1-12 students in increasing order of mistake count), the number of total unique mistakes to review, the number of additional mistakes attributed to the newly-added student, and the IDs of the additional mistakes.</ul>
 
-Finally, there are some miscellaneous questions that I'd like to answer using this data.
-<ul><b>TO DO: upload tutoring.Rmd</b></ul>
+Finally, there are some miscellaneous questions that I'd like to answer using this data. Data exploration, visualization, and analysis are done in R.  
+<b>Part 1:</b> How many additional mistakes should I expect to review if I add another student to my group?  
+<b>Part 2 (to be uploaded):</b> Is our current approach of grouping students with similar test scores together really the best grouping approach? Do other grouping metrics provide a better ratio of seconds per question (spq) for all students in the class?
